@@ -50,6 +50,13 @@ public class JwtService {
     return generateToken(extraClaims, username);
   }
 
+  public String generateToken(String username, Long adminId, List<Long> buildingIds, long expiration) {
+    Map<String, Object> extraClaims = new HashMap<>();
+    extraClaims.put("adminId", adminId);
+    extraClaims.put("buildingIds", buildingIds);
+    return buildToken(extraClaims, username, expiration);
+  }
+
   public String generateToken(Map<String, Object> extraClaims, String username) {
     return buildToken(extraClaims, username, jwtExpiration);
   }

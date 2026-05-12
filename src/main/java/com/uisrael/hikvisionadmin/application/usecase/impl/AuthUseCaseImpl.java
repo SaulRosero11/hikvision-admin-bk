@@ -64,10 +64,15 @@ public class AuthUseCaseImpl implements IAuthUseCase {
         .map(Building::getId)
         .collect(Collectors.toList());
 
+    long expiration = Boolean.TRUE.equals(request.getRememberDevice())
+        ? jwtService.getExpirationTime()
+        : 30 * 60 * 1000L;
+
     String token = jwtService.generateToken(
         admin.getUsername(),
         admin.getId(),
-        buildingIds);
+        buildingIds,
+        expiration);
 
     return LoginResponseDTO.builder()
         .token(token)

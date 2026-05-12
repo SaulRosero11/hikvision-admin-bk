@@ -11,6 +11,7 @@ public class FloorResponseDTO {
   private String name;
   private String description;
   private Long buildingId;
+  private String buildingName;
   private Boolean isActive;
 
   private String createdUser;

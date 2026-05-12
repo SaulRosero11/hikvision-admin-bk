@@ -11,6 +11,7 @@ import com.uisrael.hikvisionadmin.application.usecase.entry.IFloorUseCase;
 import com.uisrael.hikvisionadmin.domain.entities.Floor;
 import com.uisrael.hikvisionadmin.domain.exceptions.DomainException;
 import com.uisrael.hikvisionadmin.domain.repositories.IFloorRepository;
+import com.uisrael.hikvisionadmin.infrastructure.persistence.adapters.BuildingRepositoryImpl;
 import com.uisrael.hikvisionadmin.presentation.dto.request.FloorRequestDTO;
 import com.uisrael.hikvisionadmin.presentation.dto.response.FloorResponseDTO;
 import com.uisrael.hikvisionadmin.presentation.mappers.IFloorDtoMapper;
@@ -25,23 +26,24 @@ public class FloorUseCaseImpl implements IFloorUseCase {
 
   private final IFloorRepository repository;
   private final IFloorDtoMapper floorMapper;
+  private final BuildingRepositoryImpl buildingRepository;
 
   @Override
   public Optional<FloorResponseDTO> findById(Long id) {
-    return repository.findById(id).map(floorMapper::toResponseDto);
+    return repository.findById(id).map(this::toResponseWithBuildingName);
   }
 
   @Override
   public List<FloorResponseDTO> findByBuildingId(Long buildingId) {
     return repository.findByBuildingId(buildingId).stream()
-        .map(floorMapper::toResponseDto)
+        .map(this::toResponseWithBuildingName)
         .collect(Collectors.toList());
   }
 
   @Override
   public List<FloorResponseDTO> list() {
     return repository.findAll().stream()
-        .map(floorMapper::toResponseDto)
+        .map(this::toResponseWithBuildingName)
         .collect(Collectors.toList());
   }
 
@@ -67,7 +69,7 @@ public class FloorUseCaseImpl implements IFloorUseCase {
 
     floor.validate();
     Floor savedFloor = repository.save(floor);
-    return floorMapper.toResponseDto(savedFloor);
+    return toResponseWithBuildingName(savedFloor);
   }
 
   @Override
@@ -90,7 +92,14 @@ public class FloorUseCaseImpl implements IFloorUseCase {
 
     floorToUpdate.validate();
     Floor updated = repository.save(floorToUpdate);
-    return floorMapper.toResponseDto(updated);
+    return toResponseWithBuildingName(updated);
+  }
+
+  private FloorResponseDTO toResponseWithBuildingName(Floor floor) {
+    FloorResponseDTO dto = floorMapper.toResponseDto(floor);
+    buildingRepository.findById(floor.getBuildingId())
+        .ifPresent(building -> dto.setBuildingName(building.getName()));
+    return dto;
   }
 
 }
