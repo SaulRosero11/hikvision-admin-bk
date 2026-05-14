@@ -1,7 +1,6 @@
 package com.uisrael.hikvisionadmin.infrastructure.hikvision;
 
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
@@ -172,54 +171,22 @@ public class HikvisionIsapiClient implements IHikvisionDeviceService {
 
   @Override
   public byte[] downloadImage(String imageUrl, String user, String password) {
-    String cleanUrl = imageUrl.replaceAll("@WEB\\d+$", "");
     try (CloseableHttpClient client = createImageClient(user, password)) {
-      byte[] direct = tryDirectGet(client, cleanUrl);
-      if (direct != null) return direct;
-      return tryIsapiDownload(client, cleanUrl);
+      HttpGet request = new HttpGet(imageUrl);
+      request.setHeader("ngrok-skip-browser-warning", "true");
+      return client.execute(request, response -> {
+        int statusCode = response.getCode();
+        if (statusCode < 200 || statusCode >= 300) {
+          log.warn("Failed to download image from {} - Status: {}", imageUrl, statusCode);
+          return new byte[0];
+        }
+        HttpEntity entity = response.getEntity();
+        return entity != null ? entity.getContent().readAllBytes() : new byte[0];
+      });
     } catch (Exception e) {
-      log.warn("Error downloading image from {}: {}", cleanUrl, e.getMessage());
+      log.warn("Error downloading image from {}: {}", imageUrl, e.getMessage());
       return new byte[0];
     }
-  }
-
-  private byte[] tryDirectGet(CloseableHttpClient client, String url) throws IOException {
-    HttpGet request = new HttpGet(url);
-    request.setHeader("ngrok-skip-browser-warning", "true");
-    return client.execute(request, response -> {
-      int statusCode = response.getCode();
-      if (statusCode == 404) return null; // señal para intentar ISAPI
-      if (statusCode < 200 || statusCode >= 300) {
-        log.warn("Direct image download failed {} - Status: {}", url, statusCode);
-        return new byte[0];
-      }
-      HttpEntity entity = response.getEntity();
-      return entity != null ? entity.getContent().readAllBytes() : new byte[0];
-    });
-  }
-
-  private byte[] tryIsapiDownload(CloseableHttpClient client, String imageUrl) throws IOException {
-    URI uri = URI.create(imageUrl);
-    String base = uri.getScheme() + "://" + uri.getHost()
-        + (uri.getPort() > 0 ? ":" + uri.getPort() : "");
-    String picName = uri.getPath().replaceFirst("^/LOCALS/pic/", "");
-
-    String endpoint = base + "/ISAPI/AccessControl/AcsEvent/downloadPic";
-    String body = "{\"picName\":\"" + picName + "\"}";
-
-    HttpPost post = new HttpPost(endpoint);
-    post.setEntity(new StringEntity(body, ContentType.APPLICATION_JSON));
-    post.setHeader("ngrok-skip-browser-warning", "true");
-
-    return client.execute(post, response -> {
-      int statusCode = response.getCode();
-      if (statusCode < 200 || statusCode >= 300) {
-        log.warn("ISAPI downloadPic failed for {} - Status: {}", picName, statusCode);
-        return new byte[0];
-      }
-      HttpEntity entity = response.getEntity();
-      return entity != null ? entity.getContent().readAllBytes() : new byte[0];
-    });
   }
 
   // ========== HTTP con DigestAuth ==========

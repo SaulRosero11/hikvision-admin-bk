@@ -176,7 +176,7 @@ public class DeviceUseCaseImpl implements IDeviceUseCase {
     Map<String, Object> result = hikvisionService.searchAccessEvents(
         device.getIp(), device.getPort(), device.getDeviceUser(), decryptedPassword,
         searchPosition, maxResults, beginTime, endTime);
-    enrichEventsWithImages(result, device.getDeviceUser(), decryptedPassword);
+    enrichEventsWithImages(result, device.getIp(), device.getPort(), device.getDeviceUser(), decryptedPassword);
     return result;
   }
 
@@ -245,7 +245,8 @@ public class DeviceUseCaseImpl implements IDeviceUseCase {
   }
 
   @SuppressWarnings("unchecked")
-  private void enrichEventsWithImages(Map<String, Object> result, String user, String password) {
+  private void enrichEventsWithImages(Map<String, Object> result, String deviceIp, int devicePort,
+      String user, String password) {
     Map<String, Object> acsEvent = (Map<String, Object>) result.get("AcsEvent");
     if (acsEvent == null) return;
 
@@ -258,14 +259,19 @@ public class DeviceUseCaseImpl implements IDeviceUseCase {
       Object pictureUrl = event.get("pictureURL");
       if (!(pictureUrl instanceof String url) || url.isBlank()) continue;
 
+      // El dispositivo embede su propia IP local en pictureURL. Reconstruimos la URL
+      // usando el host configurado en el backend para que funcione tanto con IP directa
+      // como con ngrok u otro proxy.
+      String downloadUrl = resolveImageUrl(url, deviceIp, devicePort);
+
       futures.add(CompletableFuture.runAsync(() -> {
         try {
-          byte[] imageBytes = hikvisionService.downloadImage(url, user, password);
+          byte[] imageBytes = hikvisionService.downloadImage(downloadUrl, user, password);
           if (imageBytes.length > 0) {
             event.put("pictureBase64", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(imageBytes));
           }
         } catch (Exception e) {
-          log.warn("Could not download event image from {}: {}", url, e.getMessage());
+          log.warn("Could not download event image from {}: {}", downloadUrl, e.getMessage());
         }
       }));
     }
@@ -277,6 +283,21 @@ public class DeviceUseCaseImpl implements IDeviceUseCase {
       } catch (Exception e) {
         log.warn("Some event image downloads did not complete in time: {}", e.getMessage());
       }
+    }
+  }
+
+  private String resolveImageUrl(String pictureUrl, String deviceIp, int devicePort) {
+    try {
+      String clean = pictureUrl.replaceAll("@WEB\\d+$", "");
+      java.net.URI uri = java.net.URI.create(clean);
+      String path = uri.getPath();
+      if (deviceIp.startsWith("http://") || deviceIp.startsWith("https://")) {
+        String base = deviceIp.endsWith("/") ? deviceIp.substring(0, deviceIp.length() - 1) : deviceIp;
+        return base + path;
+      }
+      return "http://" + deviceIp + ":" + devicePort + path;
+    } catch (Exception e) {
+      return pictureUrl;
     }
   }
 
