@@ -208,7 +208,6 @@ public class HikvisionIsapiClient implements IHikvisionDeviceService {
         .build();
   }
 
-  // Cliente exclusivo para descarga de imágenes: timeout corto (5s) para no bloquear el servicio
   private CloseableHttpClient createImageClient(String user, String password) {
     BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
     credentialsProvider.setCredentials(
@@ -216,8 +215,8 @@ public class HikvisionIsapiClient implements IHikvisionDeviceService {
         new UsernamePasswordCredentials(user, password.toCharArray()));
 
     RequestConfig requestConfig = RequestConfig.custom()
-        .setConnectionRequestTimeout(Timeout.ofSeconds(5))
-        .setResponseTimeout(Timeout.ofSeconds(5))
+        .setConnectionRequestTimeout(Timeout.ofSeconds(10))
+        .setResponseTimeout(Timeout.ofSeconds(30))
         .build();
 
     return HttpClients.custom()

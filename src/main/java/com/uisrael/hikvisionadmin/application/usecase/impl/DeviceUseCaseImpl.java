@@ -7,6 +7,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -250,17 +252,30 @@ public class DeviceUseCaseImpl implements IDeviceUseCase {
     List<Map<String, Object>> infoList = (List<Map<String, Object>>) acsEvent.get("InfoList");
     if (infoList == null || infoList.isEmpty()) return;
 
+    List<CompletableFuture<Void>> futures = new ArrayList<>();
+
     for (Map<String, Object> event : infoList) {
       Object pictureUrl = event.get("pictureURL");
       if (!(pictureUrl instanceof String url) || url.isBlank()) continue;
 
-      try {
-        byte[] imageBytes = hikvisionService.downloadImage(url, user, password);
-        if (imageBytes.length > 0) {
-          event.put("pictureBase64", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(imageBytes));
+      futures.add(CompletableFuture.runAsync(() -> {
+        try {
+          byte[] imageBytes = hikvisionService.downloadImage(url, user, password);
+          if (imageBytes.length > 0) {
+            event.put("pictureBase64", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(imageBytes));
+          }
+        } catch (Exception e) {
+          log.warn("Could not download event image from {}: {}", url, e.getMessage());
         }
+      }));
+    }
+
+    if (!futures.isEmpty()) {
+      try {
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+            .get(30, TimeUnit.SECONDS);
       } catch (Exception e) {
-        log.warn("Could not download event image from {}: {}", url, e.getMessage());
+        log.warn("Some event image downloads did not complete in time: {}", e.getMessage());
       }
     }
   }
