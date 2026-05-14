@@ -174,6 +174,14 @@ public class HikvisionIsapiClient implements IHikvisionDeviceService {
     try (CloseableHttpClient client = createImageClient(user, password)) {
       HttpGet request = new HttpGet(imageUrl);
       request.setHeader("ngrok-skip-browser-warning", "true");
+      // El firmware Hikvision devuelve 404 para /LOCALS/pic/ cuando Host == IP del dispositivo.
+      // Forzar un hostname arbitrario evita esa restricción sin cambiar el destino TCP.
+      try {
+        String host = java.net.URI.create(imageUrl).getHost();
+        if (host != null && host.matches("\\d+\\.\\d+\\.\\d+\\.\\d+")) {
+          request.setHeader("Host", "hikvision-device");
+        }
+      } catch (Exception ignored) {}
       return client.execute(request, response -> {
         int statusCode = response.getCode();
         if (statusCode < 200 || statusCode >= 300) {
